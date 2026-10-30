@@ -1,0 +1,21 @@
+# Skink Project Manifest (managed by scales)
+
+[package]
+name = "gmsdl"
+version = "0.1.0"
+author = "mark"
+entry = "gmsdl.skink"
+description = "SDL2 backend for skink-game — requires system SDL2"
+license = "Apache-2.0"
+
+[target]
+env = "std"
+no_std = false
+os = "any"
+arch = "any"
+
+# Compiles shim.c and links system SDL2. If your distro puts SDL2
+# elsewhere, override with SKINK_CLANG_FLAGS="-I... -L...".
+[link]
+sources = ["shim.c"]
+libs = ["SDL2"]

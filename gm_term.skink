@@ -1,0 +1,243 @@
+// File:    gm_term.skink
+// Purpose: Terminal backend for skink-game — a pure-Skink ASCII game
+//          surface. Raw mode via termios externs (ICANON/ECHO off,
+//          VMIN=VTIME=0), nonblocking key reads on stdin, and an ANSI
+//          cell-buffer renderer. Linux/Unix only.
+module gm_term
+
+import "std/str"
+import "std/libc"
+import "std/time"
+import "gm_core"
+
+extern fn tcgetattr(fd: int, termios: string) -> int
+extern fn tcsetattr(fd: int, act: int, termios: string) -> int
+extern fn read(fd: int, buf: string, n: int) -> int
+extern fn write(fd: int, buf: string, n: int) -> int
+extern fn isatty(fd: int) -> int
+
+// Key codes returned by PollKey.
+pub const KEY_NONE  = -1
+pub const KEY_ESC   = 27
+pub const KEY_UP    = 1000
+pub const KEY_DOWN  = 1001
+pub const KEY_RIGHT = 1002
+pub const KEY_LEFT  = 1003
+pub const KEY_ENTER = 10
+
+var termSaved string   // saved termios, 64 bytes malloc'd
+var termRaw   = false
+var escStr    string   // "\x1b" as a Skink string (no \e escape exists)
+
+// esc lazily builds the ESC character string.
+fn esc() -> string {
+    if int64(escStr) == 0 {
+        escStr = libc.malloc(2)
+        escStr[0] = 27
+        escStr[1] = 0
+    }
+    return escStr
+}
+
+// EnterRaw puts stdin in nonblocking raw-ish mode (no canonical line
+// editing, no echo). Returns false when stdin isn't a TTY.
+pub fn EnterRaw() -> bool {
+    if isatty(0) == 0 {
+        return false
+    }
+    termSaved = libc.malloc(64)
+    if tcgetattr(0, termSaved) != 0 {
+        libc.free(termSaved)
+        termSaved = ""
+        return false
+    }
+    t := libc.malloc(64)
+    libc.memcpy(t, termSaved, 64)
+    // c_lflag at offset 12: clear ICANON(2)|ECHO(8)
+    lf := le32(t, 12)
+    lf = lf & ~(2 | 8)
+    wl32(t, 12, lf)
+    // c_cc[VMIN=6]=0 at offset 17+6=23, c_cc[VTIME=5]=0 at 22
+    t[22] = 0
+    t[23] = 0
+    tcsetattr(0, 0, t)
+    libc.free(t)
+    termRaw = true
+    return true
+}
+
+// ExitRaw restores the saved termios.
+pub fn ExitRaw() {
+    if termRaw {
+        tcsetattr(0, 0, termSaved)
+        termRaw = false
+    }
+}
+
+// PollKey returns a key code or KEY_NONE. Arrow keys are decoded from
+// ESC [ A/B/C/D escape sequences; everything else returns the byte.
+pub fn PollKey() -> int {
+    b := libc.malloc(4)
+    n := read(0, b, 1)
+    if n <= 0 {
+        libc.free(b)
+        return KEY_NONE
+    }
+    c := int(b[0]) & 255
+    if c != 27 {
+        libc.free(b)
+        return c
+    }
+    // possible escape sequence: read [ then letter
+    n = read(0, b, 1)
+    if n <= 0 || (int(b[0]) & 255) != 91 {
+        libc.free(b)
+        return KEY_ESC
+    }
+    n = read(0, b, 1)
+    if n <= 0 {
+        libc.free(b)
+        return KEY_ESC
+    }
+    k := int(b[0]) & 255
+    libc.free(b)
+    if k == 65 {
+        return KEY_UP
+    }
+    if k == 66 {
+        return KEY_DOWN
+    }
+    if k == 67 {
+        return KEY_RIGHT
+    }
+    if k == 68 {
+        return KEY_LEFT
+    }
+    return KEY_ESC
+}
+
+// Screen is a W×H cell buffer of character codes.
+pub struct Screen {
+    W:     int
+    H:     int
+    Cells: []int
+}
+
+// NewScreen allocates a blanked screen.
+pub fn NewScreen(w: int, h: int) -> Screen {
+    var c []int
+    for i := 0; i < w * h; i = i + 1 {
+        c = append(c, 32)
+    }
+    return Screen{W: w, H: h, Cells: c}
+}
+
+// Clear fills the screen with a character (default space).
+pub fn Clear(s: *Screen) {
+    for i := 0; i < len(s.Cells); i = i + 1 {
+        s.Cells[i] = 32
+    }
+}
+
+// Set puts char code c at (x,y) if in bounds.
+pub fn Set(s: *Screen, x: int, y: int, c: int) {
+    if x < 0 || x >= s.W || y < 0 || y >= s.H {
+        return
+    }
+    s.Cells[y * s.W + x] = c
+}
+
+// Text draws a string starting at (x,y).
+pub fn Text(s: *Screen, x: int, y: int, txt: string) {
+    for i := 0; i < str.Len(txt); i = i + 1 {
+        Set(s, x + i, y, int(txt[i]) & 255)
+    }
+}
+
+// FillRect fills a rect with char c.
+pub fn FillRect(s: *Screen, x: int, y: int, w: int, h: int, c: int) {
+    for yy := 0; yy < h; yy = yy + 1 {
+        for xx := 0; xx < w; xx = xx + 1 {
+            Set(s, x + xx, y + yy, c)
+        }
+    }
+}
+
+// DrawEntity stamps an entity's AABB with a char.
+pub fn DrawEntity(s: *Screen, e: *gm_core.Entity, c: int) {
+    FillRect(s, int(e.Pos.X), int(e.Pos.Y), int(e.Size.X), int(e.Size.Y), c)
+}
+
+// Present writes the buffer to the terminal (home + rows).
+pub fn Present(s: *Screen) {
+    out := esc()
+    out = str.Concat(out, "[H")
+    for y := 0; y < s.H; y = y + 1 {
+        for x := 0; x < s.W; x = x + 1 {
+            b := libc.malloc(2)
+            b[0] = s.Cells[y * s.W + x] & 255
+            b[1] = 0
+            out = str.Concat(out, b)
+            libc.free(b)
+        }
+        out = str.Concat(out, "\n")
+    }
+    write(1, out, str.Len(out))
+}
+
+// HideCursor/ShowCursor toggle the cursor via ANSI codes.
+pub fn HideCursor() {
+    s := str.Concat(esc(), "[?25l")
+    write(1, s, str.Len(s))
+}
+
+pub fn ShowCursor() {
+    s := str.Concat(esc(), "[?25h")
+    write(1, s, str.Len(s))
+}
+
+// ClearScreen emits the full-screen erase.
+pub fn ClearScreen() {
+    s := str.Concat(esc(), "[2J")
+    s = str.Concat(s, esc())
+    s = str.Concat(s, "[H")
+    write(1, s, str.Len(s))
+}
+
+// Run drives a terminal game: enters raw mode, loops at fps calling
+// update(dt,lastKey)->bool (false quits) and render(screen), then
+// restores the terminal. Returns false if the TTY setup failed.
+pub fn Run(w: int, h: int, fps: int,
+    update: fn(float, int) -> bool, render: fn(*Screen)) -> bool {
+    if !EnterRaw() {
+        return false
+    }
+    HideCursor()
+    ClearScreen()
+    scr := NewScreen(w, h)
+    key := KEY_NONE
+    gm_core.Loop(fps, fn(dt: float) -> bool {
+        key = PollKey()
+        return update(dt, key)
+    }, fn() {
+        render(&scr)
+        Present(&scr)
+    })
+    ClearScreen()
+    ShowCursor()
+    ExitRaw()
+    return true
+}
+
+// le32/wl32 are little-endian i32 accessors for the termios blob.
+fn le32(b: string, off: int) -> int {
+    return (int(b[off]) & 255) | ((int(b[off + 1]) & 255) << 8) |
+        ((int(b[off + 2]) & 255) << 16) | ((int(b[off + 3]) & 255) << 24)
+}
+
+fn wl32(b: string, off: int, v: int) {
+    b[off] = v & 255
+    b[off + 1] = (v >> 8) & 255
+    b[off + 2] = (v >> 16) & 255
+    b[off + 3] = (v >> 24) & 255
+}

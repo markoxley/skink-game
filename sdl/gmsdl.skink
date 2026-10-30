@@ -1,0 +1,133 @@
+// File:    gmsdl.skink
+// Purpose: SDL2 backend for skink-game. Bindings over shim.c's C ABI —
+//          a single window + accelerated renderer, immediate-mode
+//          fillrect drawing, scancode-keyed event polling, and a
+//          fixed-timestep Run loop matching gm_term's contract.
+//          Requires system SDL2; the [link] section in this
+//          subpackage's skink.toml compiles the shim.
+module gmsdl
+
+import "std/errors"
+import "../gm_core"
+
+extern fn skinkgm_open(title: string, w: int, h: int) -> int
+extern fn skinkgm_close()
+extern fn skinkgm_poll() -> int
+extern fn skinkgm_clear(r: int, g: int, b: int)
+extern fn skinkgm_rect(x: int, y: int, w: int, h: int, r: int, g: int, b: int)
+extern fn skinkgm_present()
+extern fn skinkgm_delay(ms: int)
+extern fn skinkgm_scancode_up() -> int
+extern fn skinkgm_scancode_down() -> int
+extern fn skinkgm_scancode_left() -> int
+extern fn skinkgm_scancode_right() -> int
+extern fn skinkgm_scancode_space() -> int
+extern fn skinkgm_scancode_esc() -> int
+extern fn skinkgm_scancode_w() -> int
+extern fn skinkgm_scancode_a() -> int
+extern fn skinkgm_scancode_s() -> int
+extern fn skinkgm_scancode_d() -> int
+
+// Key scancodes (queried from SDL at first use).
+pub fn KeyUp() -> int    { return skinkgm_scancode_up() }
+pub fn KeyDown() -> int  { return skinkgm_scancode_down() }
+pub fn KeyLeft() -> int  { return skinkgm_scancode_left() }
+pub fn KeyRight() -> int { return skinkgm_scancode_right() }
+pub fn KeySpace() -> int { return skinkgm_scancode_space() }
+pub fn KeyEsc() -> int   { return skinkgm_scancode_esc() }
+pub fn KeyW() -> int     { return skinkgm_scancode_w() }
+pub fn KeyA() -> int     { return skinkgm_scancode_a() }
+pub fn KeyS() -> int     { return skinkgm_scancode_s() }
+pub fn KeyD() -> int     { return skinkgm_scancode_d() }
+
+// Open creates the game window. Returns an error on failure.
+pub fn Open(title: string, w: int, h: int) -> errors.Error {
+    if skinkgm_open(title, w, h) != 0 {
+        return errors.New("gmsdl: window creation failed (no display?)")
+    }
+    return errors.New("")
+}
+
+// Close destroys the window.
+pub fn Close() {
+    skinkgm_close()
+}
+
+// Color is an RGB triple.
+pub struct Color {
+    R: int
+    G: int
+    B: int
+}
+
+// Clear fills the frame with `c`.
+pub fn Clear(c: Color) {
+    skinkgm_clear(c.R, c.G, c.B)
+}
+
+// FillRect draws a filled rect in `c` (pixel coords).
+pub fn FillRect(x: int, y: int, w: int, h: int, c: Color) {
+    skinkgm_rect(x, y, w, h, c.R, c.G, c.B)
+}
+
+// DrawEntity stamps an entity's AABB as a filled rect. `scale`
+// converts game units to pixels.
+pub fn DrawEntity(e: *gm_core.Entity, scale: int, c: Color) {
+    skinkgm_rect(int(e.Pos.X * float(scale)), int(e.Pos.Y * float(scale)),
+        int(e.Size.X * float(scale)), int(e.Size.Y * float(scale)),
+        c.R, c.G, c.B)
+}
+
+// Present swaps the frame.
+pub fn Present() {
+    skinkgm_present()
+}
+
+// PollKey returns one pending key scancode, 0 when the queue is
+// empty, or -1 on a quit request. Call in a loop until 0.
+pub fn PollKey() -> int {
+    for {
+        e := skinkgm_poll()
+        if e == -1 {
+            return 0
+        }
+        if e == -2 {
+            return -1
+        }
+        if e == -3 {
+            continue   // non-key event — keep draining
+        }
+        return e
+    }
+    return 0
+}
+
+// Delay sleeps ms milliseconds (SDL_Delay).
+pub fn Delay(ms: int) {
+    skinkgm_delay(ms)
+}
+
+// Run drives an SDL game: opens the window, then loops at fps calling
+// update(dt, key) -> bool (key is 0/last-scancode/-1-for-quit; false
+// quits) and render(). The window closes on exit.
+pub fn Run(title: string, w: int, h: int, fps: int,
+    update: fn(float, int) -> bool, render: fn()) -> errors.Error {
+    err := Open(title, w, h)
+    if err.message != "" {
+        return err
+    }
+    quit := false
+    gm_core.Loop(fps, fn(dt: float) -> bool {
+        if quit {
+            return false
+        }
+        key := PollKey()
+        if key == -1 {
+            quit = true
+            return false
+        }
+        return update(dt, key)
+    }, render)
+    Close()
+    return errors.New("")
+}

@@ -1,0 +1,66 @@
+// File:    demo_bounce.skink
+// Purpose: Terminal demo for skink-game — a bouncing ball in an 40x14
+//          cell arena. Arrows nudge the ball, ESC/q quits. Run with:
+//            skink -o bounce demo_bounce.skink && ./bounce
+//          (needs a real TTY — stdin must be a terminal)
+module main
+
+import "gm"
+import "gm_core"
+import "gm_term"
+import "std/str"
+
+var ball gm_core.Entity
+
+fn main() -> int {
+    ball = gm.NewEntity(20.0, 7.0, 2.0, 1.0, "ball")
+    ball.Vel = gm_core.Vec2{X: 14.0, Y: 8.0}
+    ok := gm.RunTerminal(40, 14, 30,
+        fn(dt: float, key: int) -> bool {
+            if key == gm_term.KEY_ESC || key == 113 {   // ESC or 'q'
+                return false
+            }
+            if key == gm_term.KEY_LEFT {
+                ball.Vel.X = ball.Vel.X - 4.0
+            }
+            if key == gm_term.KEY_RIGHT {
+                ball.Vel.X = ball.Vel.X + 4.0
+            }
+            if key == gm_term.KEY_UP {
+                ball.Vel.Y = ball.Vel.Y - 4.0
+            }
+            if key == gm_term.KEY_DOWN {
+                ball.Vel.Y = ball.Vel.Y + 4.0
+            }
+            gm_core.Integrate(&ball, dt)
+            // bounce off walls
+            if ball.Pos.X < 0.0 {
+                ball.Pos.X = 0.0
+                ball.Vel.X = -ball.Vel.X
+            }
+            if ball.Pos.X + ball.Size.X > 40.0 {
+                ball.Pos.X = 40.0 - ball.Size.X
+                ball.Vel.X = -ball.Vel.X
+            }
+            if ball.Pos.Y < 0.0 {
+                ball.Pos.Y = 0.0
+                ball.Vel.Y = -ball.Vel.Y
+            }
+            if ball.Pos.Y + ball.Size.Y > 14.0 {
+                ball.Pos.Y = 14.0 - ball.Size.Y
+                ball.Vel.Y = -ball.Vel.Y
+            }
+            return true
+        },
+        fn(scr: *gm_term.Screen) {
+            gm_term.Clear(scr)
+            gm_term.Text(scr, 1, 0, "skink-game bounce — arrows nudge, q quits")
+            gm_term.DrawEntity(scr, &ball, 79)   // 'O'
+        })
+    if !ok {
+        println("needs a TTY")
+        return 1
+    }
+    println("bye")
+    return 0
+}

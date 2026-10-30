@@ -1,0 +1,117 @@
+// File:    gm_core.skink
+// Purpose: Engine core for skink-game — 2D math (Vec2/Rect), entities
+//          with velocity integration, AABB collision, and a fixed-
+//          timestep loop driver that backends call into.
+module gm_core
+
+import "std/math"
+import "std/time"
+
+// Vec2 is a 2D vector.
+pub struct Vec2 {
+    X: float
+    Y: float
+}
+
+// Add/Sub/Scale are vector helpers.
+pub fn Add(a: Vec2, b: Vec2) -> Vec2 {
+    return Vec2{X: a.X + b.X, Y: a.Y + b.Y}
+}
+
+pub fn Sub(a: Vec2, b: Vec2) -> Vec2 {
+    return Vec2{X: a.X - b.X, Y: a.Y - b.Y}
+}
+
+pub fn Scale(a: Vec2, k: float) -> Vec2 {
+    return Vec2{X: a.X * k, Y: a.Y * k}
+}
+
+// Len returns the vector magnitude.
+pub fn Len(a: Vec2) -> float {
+    return math.Sqrt(a.X * a.X + a.Y * a.Y)
+}
+
+// Norm returns the unit vector (or zero).
+pub fn Norm(a: Vec2) -> Vec2 {
+    l := Len(a)
+    if l < 0.0000001 {
+        return Vec2{X: 0.0, Y: 0.0}
+    }
+    return Vec2{X: a.X / l, Y: a.Y / l}
+}
+
+// Rect is an axis-aligned box.
+pub struct Rect {
+    X: float
+    Y: float
+    W: float
+    H: float
+}
+
+// Overlaps reports whether two rects intersect (inclusive edges).
+pub fn Overlaps(a: Rect, b: Rect) -> bool {
+    return a.X < b.X + b.W && a.X + a.W > b.X &&
+        a.Y < b.Y + b.H && a.Y + a.H > b.Y
+}
+
+// Contains reports whether point p is inside r.
+pub fn Contains(r: Rect, p: Vec2) -> bool {
+    return p.X >= r.X && p.X < r.X + r.W && p.Y >= r.Y && p.Y < r.Y + r.H
+}
+
+// Entity is a moving body: position, velocity, and AABB size.
+pub struct Entity {
+    Pos:  Vec2
+    Vel:  Vec2
+    Size: Vec2   // AABB dimensions for collision
+    Tag:  string // user tag, e.g. "player", "coin"
+    Alive: bool
+}
+
+// Bounds returns the entity's AABB.
+pub fn Bounds(e: *Entity) -> Rect {
+    return Rect{X: e.Pos.X, Y: e.Pos.Y, W: e.Size.X, H: e.Size.Y}
+}
+
+// NewEntity builds an entity at (x,y) with size (w,h).
+pub fn NewEntity(x: float, y: float, w: float, h: float, tag: string) -> Entity {
+    return Entity{Pos: Vec2{X: x, Y: y}, Vel: Vec2{X: 0.0, Y: 0.0},
+        Size: Vec2{X: w, Y: h}, Tag: tag, Alive: true}
+}
+
+// Integrate advances e by dt seconds (pos += vel*dt).
+pub fn Integrate(e: *Entity, dt: float) {
+    e.Pos.X = e.Pos.X + e.Vel.X * dt
+    e.Pos.Y = e.Pos.Y + e.Vel.Y * dt
+}
+
+// Collides reports AABB overlap between two entities.
+pub fn Collides(a: *Entity, b: *Entity) -> bool {
+    return Overlaps(Bounds(a), Bounds(b))
+}
+
+// Loop runs a fixed-timestep game loop. update(dt) returns false to
+// quit; render() is called once per update (backends composite the
+// real frame pacing — this driver aims for `fps` updates/sec and
+// measures real elapsed time, so dt is wall-clock accurate).
+pub fn Loop(fps: int, update: fn(float) -> bool, render: fn()) {
+    if fps <= 0 {
+        fps = 60
+    }
+    frameNs := int64(1000000000) / int64(fps)
+    last := time.NowUnixNano()
+    for {
+        now := time.NowUnixNano()
+        dt := float(now - last) / 1000000000.0
+        last = now
+        if !update(dt) {
+            return
+        }
+        render()
+        // sleep the remainder of the frame budget
+        spent := time.NowUnixNano() - now
+        if spent < frameNs {
+            time.SleepMs(int((frameNs - spent) / int64(1000000)))
+        }
+    }
+}

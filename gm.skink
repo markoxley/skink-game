@@ -1,0 +1,32 @@
+// File:    gm.skink
+// Purpose: Root module for skink-game. Re-exports the engine core and
+//          the terminal backend so `import "gm"` covers headless +
+//          terminal games. The SDL2 backend is the `game/sdl`
+//          subpackage (needs system SDL2, linked via [link]).
+//
+//          Layers:
+//            gm_core — Vec2/Rect/Entity math, AABB collision, Loop
+//            gm_term — ANSI terminal backend (raw mode, cell buffer)
+//            sdl/    — SDL2 windowed backend (subpackage)
+module gm
+
+import "gm_core"
+import "gm_term"
+import "std/errors"
+
+// NewEntity builds an entity at (x,y) with AABB size (w,h).
+pub fn NewEntity(x: float, y: float, w: float, h: float, tag: string) -> gm_core.Entity {
+    return gm_core.NewEntity(x, y, w, h, tag)
+}
+
+// RunTerminal plays a game on a w×h-cell terminal at fps.
+// update(dt, key)->bool; render(screen). Returns false without a TTY.
+pub fn RunTerminal(w: int, h: int, fps: int,
+    update: fn(float, int) -> bool, render: fn(*gm_term.Screen)) -> bool {
+    return gm_term.Run(w, h, fps, update, render)
+}
+
+// Loop drives a fixed-timestep loop at fps.
+pub fn Loop(fps: int, update: fn(float) -> bool, render: fn()) {
+    gm_core.Loop(fps, update, render)
+}

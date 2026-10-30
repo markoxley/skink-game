@@ -1,0 +1,17 @@
+# Skink Project Manifest (managed by scales)
+
+[package]
+name = "game"
+version = "0.1.0"
+author = "mark"
+entry = "gm.skink"
+description = "2D game toolkit for Skink: engine core (entities, fixed-timestep loop, math), a pure-Skink terminal backend (ANSI + raw input), and an SDL2 backend in the sdl/ subpackage"
+license = "Apache-2.0"
+
+[target]
+env = "std"
+no_std = false
+os = "any"
+arch = "any"
+
+[dependencies]

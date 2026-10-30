@@ -1,0 +1,104 @@
+// File:    gm_test.skink
+// Purpose: Unit tests for skink-game — Vec2/Rect math, entity
+//          integration + collision, the fixed-timestep Loop (real
+//          wall-clock ticks), and terminal Screen cell-buffer ops.
+//          Raw-mode/ANSI output isn't exercised (needs a TTY).
+module gm_test
+
+import "gm_core"
+import "gm_term"
+import "gm"
+import "std/str"
+import "std/math"
+import "std/testing"
+
+// TestVec2 checks vector math.
+pub fn TestVec2() {
+    a := gm_core.Vec2{X: 3.0, Y: 4.0}
+    testing.AssertTrue(math.Abs(gm_core.Len(a) - 5.0) < 0.001, "len 5")
+    n := gm_core.Norm(a)
+    testing.AssertTrue(math.Abs(n.X - 0.6) < 0.001, "norm x")
+    b := gm_core.Add(a, gm_core.Vec2{X: 1.0, Y: 1.0})
+    testing.AssertTrue(math.Abs(b.X - 4.0) < 0.001, "add")
+    s := gm_core.Scale(a, 2.0)
+    testing.AssertTrue(math.Abs(s.Y - 8.0) < 0.001, "scale")
+    z := gm_core.Norm(gm_core.Vec2{X: 0.0, Y: 0.0})
+    testing.AssertTrue(math.Abs(z.X) < 0.001, "norm zero safe")
+}
+
+// TestRect checks overlap and containment.
+pub fn TestRect() {
+    a := gm_core.Rect{X: 0.0, Y: 0.0, W: 10.0, H: 10.0}
+    b := gm_core.Rect{X: 5.0, Y: 5.0, W: 10.0, H: 10.0}
+    c := gm_core.Rect{X: 20.0, Y: 0.0, W: 5.0, H: 5.0}
+    testing.AssertTrue(gm_core.Overlaps(a, b), "overlap")
+    testing.AssertFalse(gm_core.Overlaps(a, c), "no overlap")
+    testing.AssertTrue(gm_core.Contains(a, gm_core.Vec2{X: 5.0, Y: 5.0}), "contains")
+    testing.AssertFalse(gm_core.Contains(a, gm_core.Vec2{X: 15.0, Y: 5.0}), "not contains")
+}
+
+// TestEntity integrates movement and collision.
+pub fn TestEntity() {
+    e := gm.NewEntity(0.0, 0.0, 4.0, 4.0, "player")
+    e.Vel = gm_core.Vec2{X: 10.0, Y: -5.0}
+    gm_core.Integrate(&e, 0.5)
+    testing.AssertTrue(math.Abs(e.Pos.X - 5.0) < 0.001, "moved x")
+    testing.AssertTrue(math.Abs(e.Pos.Y + 2.5) < 0.001, "moved y")
+    other := gm.NewEntity(6.0, -2.0, 4.0, 4.0, "wall")
+    testing.AssertTrue(gm_core.Collides(&e, &other), "collides")
+    far := gm.NewEntity(50.0, 0.0, 2.0, 2.0, "far")
+    testing.AssertFalse(gm_core.Collides(&e, &far), "not colliding")
+}
+
+// TestLoopTicks runs the fixed-timestep loop for a few frames and
+// verifies dt is plausible and quitting works.
+pub fn TestLoopTicks() {
+    var ticks []int
+    // can't capture locals in fn literals? test whether spawn-style
+    // closure works — use a package-level counter instead (see below)
+    _ = ticks
+    loopCount = 0
+    gm.Loop(120, fn(dt: float) -> bool {
+        loopCount = loopCount + 1
+        loopDt = dt
+        return loopCount < 5
+    }, fn() {
+        loopRenders = loopRenders + 1
+    })
+    testing.AssertEqualInt(loopCount, 5, "ticks")
+    testing.AssertEqualInt(loopRenders, 4, "renders") // update false exits before render
+    testing.AssertTrue(loopDt > 0.0, "dt positive")
+}
+
+var loopCount = 0
+var loopRenders = 0
+var loopDt = 0.0
+
+// TestScreen checks the cell buffer.
+pub fn TestScreen() {
+    s := gm_term.NewScreen(10, 5)
+    gm_term.Set(&s, 3, 2, 88)   // 'X'
+    testing.AssertEqualInt(s.Cells[2 * 10 + 3], 88, "cell set")
+    gm_term.Text(&s, 0, 0, "HI")
+    testing.AssertEqualInt(s.Cells[0], 72, "H")
+    testing.AssertEqualInt(s.Cells[1], 73, "I")
+    gm_term.FillRect(&s, 5, 1, 3, 2, 35)  // '#'
+    testing.AssertEqualInt(s.Cells[1 * 10 + 5], 35, "rect fill")
+    gm_term.Clear(&s)
+    testing.AssertEqualInt(s.Cells[0], 32, "cleared")
+}
+
+// TestDrawEntity stamps an entity on the screen.
+pub fn TestDrawEntity() {
+    s := gm_term.NewScreen(20, 10)
+    e := gm.NewEntity(4.0, 2.0, 3.0, 2.0, "block")
+    gm_term.DrawEntity(&s, &e, 64)  // '@'
+    testing.AssertEqualInt(s.Cells[2 * 20 + 4], 64, "entity px")
+    testing.AssertEqualInt(s.Cells[3 * 20 + 6], 64, "entity px2")
+}
+
+// TestKeyConstants checks key-code values are stable/distinct.
+pub fn TestKeyConstants() {
+    testing.AssertTrue(gm_term.KEY_UP != gm_term.KEY_DOWN, "arrows differ")
+    testing.AssertTrue(gm_term.KEY_NONE < 0, "none sentinel")
+}

@@ -1,0 +1,37 @@
+// File:    gmsdl_test.skink
+// Purpose: SDL2 backend smoke test — opens a window under the dummy
+//          video driver, draws rects, drains events, closes. Run:
+//            SDL_VIDEODRIVER=dummy ./gmsdl_test
+//          Verifies the shim links and the SDL calls succeed.
+module main
+
+import "gmsdl"
+import "std/errors"
+
+fn main() -> int {
+    err := gmsdl.Open("gmsdl test", 320, 240)
+    if err.message != "" {
+        println("SKIP: window open failed — " + err.message)
+        return 0   // headless CI without even the dummy driver
+    }
+    gmsdl.Clear(gmsdl.Color{R: 10, G: 20, B: 30})
+    gmsdl.FillRect(10, 10, 50, 40, gmsdl.Color{R: 255, G: 0, B: 0})
+    gmsdl.Present()
+    // drain events — dummy driver yields none, must return 0
+    k := gmsdl.PollKey()
+    if k != 0 {
+        println("unexpected key from empty queue")
+        gmsdl.Close()
+        return 1
+    }
+    // scancode constants are nonzero and distinct
+    if gmsdl.KeyUp() == gmsdl.KeyDown() || gmsdl.KeyEsc() <= 0 {
+        println("scancode constants broken")
+        gmsdl.Close()
+        return 1
+    }
+    gmsdl.Delay(5)
+    gmsdl.Close()
+    println("gmsdl: window+render+event smoke OK")
+    return 0
+}
