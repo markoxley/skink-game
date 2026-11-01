@@ -16,6 +16,11 @@ extern fn read(fd: int, buf: string, n: int) -> int
 extern fn write(fd: int, buf: string, n: int) -> int
 extern fn isatty(fd: int) -> int
 
+// Raw byte accessors for malloc'd buffers (ESC string, termios blob) —
+// string indexing is bounds-checked against strlen (0 on a fresh buffer).
+extern fn Skink_mem_byte(ptr: string, idx: int64) -> int
+extern fn Skink_mem_write_byte(ptr: string, idx: int64, val: int)
+
 // Key codes returned by PollKey.
 pub const KEY_NONE  = -1
 pub const KEY_ESC   = 27
@@ -33,8 +38,10 @@ var escStr    string   // "\x1b" as a Skink string (no \e escape exists)
 fn esc() -> string {
     if int64(escStr) == 0 {
         escStr = libc.malloc(2)
-        escStr[0] = 27
-        escStr[1] = 0
+        // Raw byte writes — string indexing is bounds-checked against
+        // strlen, which is 0 on a fresh malloc'd buffer.
+        Skink_mem_write_byte(escStr, 0, 27)
+        Skink_mem_write_byte(escStr, 1, 0)
     }
     return escStr
 }
@@ -229,15 +236,18 @@ pub fn Run(w: int, h: int, fps: int,
     return true
 }
 
-// le32/wl32 are little-endian i32 accessors for the termios blob.
+// le32/wl32 are little-endian i32 accessors for the malloc'd termios
+// blob. Raw byte ops: string indexing is bounds-checked against
+// strlen, which cannot address positions inside a binary termios
+// struct (it contains NUL fields).
 fn le32(b: string, off: int) -> int {
-    return (int(b[off]) & 255) | ((int(b[off + 1]) & 255) << 8) |
-        ((int(b[off + 2]) & 255) << 16) | ((int(b[off + 3]) & 255) << 24)
+    return (Skink_mem_byte(b, int64(off)) & 255) | ((Skink_mem_byte(b, int64(off + 1)) & 255) << 8) |
+        ((Skink_mem_byte(b, int64(off + 2)) & 255) << 16) | ((Skink_mem_byte(b, int64(off + 3)) & 255) << 24)
 }
 
 fn wl32(b: string, off: int, v: int) {
-    b[off] = v & 255
-    b[off + 1] = (v >> 8) & 255
-    b[off + 2] = (v >> 16) & 255
-    b[off + 3] = (v >> 24) & 255
+    Skink_mem_write_byte(b, int64(off), v & 255)
+    Skink_mem_write_byte(b, int64(off + 1), (v >> 8) & 255)
+    Skink_mem_write_byte(b, int64(off + 2), (v >> 16) & 255)
+    Skink_mem_write_byte(b, int64(off + 3), (v >> 24) & 255)
 }

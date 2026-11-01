@@ -8,7 +8,10 @@
 module gmsdl
 
 import "std/errors"
-import "../gm_core"
+// The engine core is imported through the package cache: parent-relative
+// imports ("../gm_core") are rejected by the resolver's import-path
+// safety rules, so the sdl subpackage references the published module.
+import "mod/markoxley/skink-game/gm_core"
 
 extern fn skinkgm_open(title: string, w: int, h: int) -> int
 extern fn skinkgm_close()

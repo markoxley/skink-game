@@ -13,15 +13,17 @@ pub struct Vec2 {
     Y: float
 }
 
-// Add/Sub/Scale are vector helpers.
+// Add returns the component-wise sum a+b.
 pub fn Add(a: Vec2, b: Vec2) -> Vec2 {
     return Vec2{X: a.X + b.X, Y: a.Y + b.Y}
 }
 
+// Sub returns the component-wise difference a-b.
 pub fn Sub(a: Vec2, b: Vec2) -> Vec2 {
     return Vec2{X: a.X - b.X, Y: a.Y - b.Y}
 }
 
+// Scale multiplies both components by the scalar k.
 pub fn Scale(a: Vec2, k: float) -> Vec2 {
     return Vec2{X: a.X * k, Y: a.Y * k}
 }

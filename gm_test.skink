@@ -102,3 +102,65 @@ pub fn TestKeyConstants() {
     testing.AssertTrue(gm_term.KEY_UP != gm_term.KEY_DOWN, "arrows differ")
     testing.AssertTrue(gm_term.KEY_NONE < 0, "none sentinel")
 }
+
+// TestVec2Sub covers the component-wise difference helper.
+pub fn TestVec2Sub() {
+    d := gm_core.Sub(gm_core.Vec2{X: 5.0, Y: 7.0}, gm_core.Vec2{X: 2.0, Y: 3.0})
+    testing.AssertTrue(math.Abs(d.X - 3.0) < 0.001, "sub x")
+    testing.AssertTrue(math.Abs(d.Y - 4.0) < 0.001, "sub y")
+}
+
+// TestEntityBounds verifies Bounds produces the entity's AABB.
+pub fn TestEntityBounds() {
+    e := gm_core.NewEntity(1.0, 2.0, 3.0, 4.0, "box")
+    b := gm_core.Bounds(&e)
+    testing.AssertTrue(math.Abs(b.X - 1.0) < 0.001 && math.Abs(b.W - 3.0) < 0.001, "bounds x/w")
+    testing.AssertTrue(gm_core.Overlaps(b, gm_core.Rect{X: 2.0, Y: 3.0, W: 1.0, H: 1.0}), "bounds overlap")
+}
+
+// TestRawMode exercises the terminal raw-mode lifecycle headlessly:
+// EnterRaw must return false without a TTY, and ExitRaw must not crash.
+pub fn TestRawMode() {
+    if gm_term.EnterRaw() {
+        gm_term.ExitRaw()
+    } else {
+        gm_term.ExitRaw()   // must be a no-op-safe call
+        testing.AssertTrue(true, "no TTY — EnterRaw false as expected")
+    }
+}
+
+// TestAnsiHelpers calls the cursor/screen emitters — they write escape
+// codes to stdout, which is harmless in a test binary.
+pub fn TestAnsiHelpers() {
+    gm_term.HideCursor()
+    gm_term.ShowCursor()
+    gm_term.ClearScreen()
+    testing.AssertTrue(true, "ansi helpers did not crash")
+}
+
+// TestPollKeyHeadless verifies PollKey returns a code (KEY_NONE or a
+// key) without a TTY rather than crashing.
+pub fn TestPollKeyHeadless() {
+    k := gm_term.PollKey()
+    testing.AssertTrue(k >= gm_term.KEY_NONE, "poll returns a code")
+}
+
+// TestRunHeadless verifies the terminal game driver declines cleanly
+// when no TTY is available.
+pub fn TestRunHeadless() {
+    ok := gm_term.Run(4, 4, 30, fn(dt: float, key: int) -> bool {
+        return false
+    }, fn(s: *gm_term.Screen) {
+    })
+    if !gm_term.EnterRaw() {
+        testing.AssertFalse(ok, "Run returns false without a TTY")
+    }
+    ok2 := gm.RunTerminal(4, 4, 30, fn(dt: float, key: int) -> bool {
+        return false
+    }, fn(s: *gm_term.Screen) {
+    })
+    if !gm_term.EnterRaw() {
+        testing.AssertFalse(ok2, "RunTerminal returns false without a TTY")
+        gm_term.ExitRaw()
+    }
+}

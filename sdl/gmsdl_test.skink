@@ -30,6 +30,24 @@ fn main() -> int {
         gmsdl.Close()
         return 1
     }
+    // every movement/scancode constant must be positive and distinct
+    codes := []int{gmsdl.KeyUp(), gmsdl.KeyDown(), gmsdl.KeyLeft(),
+        gmsdl.KeyRight(), gmsdl.KeySpace(), gmsdl.KeyEsc(),
+        gmsdl.KeyW(), gmsdl.KeyA(), gmsdl.KeyS(), gmsdl.KeyD()}
+    seen := make(map[int]int)
+    for i := 0; i < len(codes); i = i + 1 {
+        if codes[i] <= 0 {
+            println("non-positive scancode constant")
+            gmsdl.Close()
+            return 1
+        }
+        seen[codes[i]] = 1
+    }
+    if len(seen) != len(codes) {
+        println("scancode constants collide")
+        gmsdl.Close()
+        return 1
+    }
     gmsdl.Delay(5)
     gmsdl.Close()
     println("gmsdl: window+render+event smoke OK")
