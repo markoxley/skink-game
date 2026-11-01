@@ -31,9 +31,11 @@ import "mod/markoxley/skink-game/sdl/gmsdl"
 ## Quick start (terminal)
 
 ```skink
-import "gm"
+import "mod/markoxley/skink-game"                  // module gm
+import "mod/markoxley/skink-game/gm_core"
+import "mod/markoxley/skink-game/gm_term"
 
-var ball gm_core.Entity   // declared via: import "gm_core"
+var ball gm_core.Entity
 
 fn main() -> int {
     ball = gm.NewEntity(10.0, 5.0, 2.0, 1.0, "ball")

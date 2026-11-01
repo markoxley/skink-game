@@ -22,8 +22,8 @@ The subpackage `skink.toml` carries a `[link]` section that compiles
 ## API
 
 ```skink
-import "gmsdl"
-import "mod/markoxley/skink-game@0.1.0/gm_core"   // or vendored path
+import "mod/markoxley/skink-game/sdl/gmsdl"
+import "mod/markoxley/skink-game/gm_core"   // optional; only needed to name core types
 
 // manual loop
 err := gmsdl.Open("My Game", 640, 480)
