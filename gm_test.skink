@@ -97,6 +97,20 @@ pub fn TestDrawEntity() {
     testing.AssertEqualInt(s.Cells[3 * 20 + 6], 64, "entity px2")
 }
 
+// TestPresentNoPanic guards the regression where Present wrote cells
+// through b[0]/b[1] string indexing on a fresh malloc'd buffer, which
+// is bounds-checked against strlen (0) and panicked on the first frame.
+// Present is now assembled with str.Builder; repeated frames must not
+// crash. Output goes to fd 1 — harmless ANSI spew under the harness.
+pub fn TestPresentNoPanic() {
+    s := gm_term.NewScreen(8, 4)
+    gm_term.Text(&s, 0, 0, "OK")
+    for i := 0; i < 5; i = i + 1 {
+        gm_term.Present(&s)
+    }
+    testing.AssertTrue(true, "present did not panic")
+}
+
 // TestKeyConstants checks key-code values are stable/distinct.
 pub fn TestKeyConstants() {
     testing.AssertTrue(gm_term.KEY_UP != gm_term.KEY_DOWN, "arrows differ")

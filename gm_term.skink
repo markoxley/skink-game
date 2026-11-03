@@ -65,8 +65,10 @@ pub fn EnterRaw() -> bool {
     lf = lf & ~(2 | 8)
     wl32(t, 12, lf)
     // c_cc[VMIN=6]=0 at offset 17+6=23, c_cc[VTIME=5]=0 at 22
-    t[22] = 0
-    t[23] = 0
+    // Raw byte writes — string indexing is bounds-checked against
+    // strlen, which is 0 on a fresh malloc'd buffer.
+    Skink_mem_write_byte(t, 22, 0)
+    Skink_mem_write_byte(t, 23, 0)
     tcsetattr(0, 0, t)
     libc.free(t)
     termRaw = true
@@ -175,20 +177,21 @@ pub fn DrawEntity(s: *Screen, e: *gm_core.Entity, c: int) {
     FillRect(s, int(e.Pos.X), int(e.Pos.Y), int(e.Size.X), int(e.Size.Y), c)
 }
 
-// Present writes the buffer to the terminal (home + rows).
+// Present writes the buffer to the terminal (home + rows) in a single
+// write. The frame is assembled with str.Builder — per-byte malloc'd
+// buffers cannot be filled via string indexing, which is bounds-checked
+// against strlen (0 on a fresh allocation).
 pub fn Present(s: *Screen) {
-    out := esc()
-    out = str.Concat(out, "[H")
+    b := str.NewBuilder(s.W * s.H + s.H + 8)
+    b.Write(esc())
+    b.Write("[H")
     for y := 0; y < s.H; y = y + 1 {
         for x := 0; x < s.W; x = x + 1 {
-            b := libc.malloc(2)
-            b[0] = s.Cells[y * s.W + x] & 255
-            b[1] = 0
-            out = str.Concat(out, b)
-            libc.free(b)
+            b.WriteByte(s.Cells[y * s.W + x] & 255)
         }
-        out = str.Concat(out, "\n")
+        b.WriteByte(10)
     }
+    out := str.String(b)
     write(1, out, str.Len(out))
 }
 
