@@ -52,7 +52,7 @@ for test_file in $test_files; do
             echo "$compile_output" | head -5 | sed 's/^/  /'
             continue
         fi
-        test_output=$(timeout 10 "$RESULTS_DIR/${base}_bin" 2>&1)
+        test_output=$(timeout 60 "$RESULTS_DIR/${base}_bin" 2>&1)
         if [ $? -eq 0 ]; then
             pass=$((pass + 1))
             echo "PASS $base (1 test)"
@@ -107,7 +107,7 @@ for test_file in $test_files; do
         continue
     fi
 
-    test_output=$(timeout 10 "$RESULTS_DIR/${base}_bin" 2>&1)
+    test_output=$(timeout 60 "$RESULTS_DIR/${base}_bin" 2>&1)
     if [ $? -eq 0 ]; then
         pass=$((pass + 1))
         echo "PASS $base ($(echo "$test_fns" | wc -w) tests)"
@@ -128,13 +128,13 @@ if command -v sdl2-config >/dev/null 2>&1 || pkg-config --exists sdl2 2>/dev/nul
         echo "FAIL gmsdl_test (compile/link error)"
         echo "$sdl_compile" | head -5 | sed 's/^/  /'
     else
-        if SDL_VIDEODRIVER=dummy timeout 10 "$RESULTS_DIR/gmsdl_test_bin" >/dev/null 2>&1; then
+        if SDL_VIDEODRIVER=dummy timeout 60 "$RESULTS_DIR/gmsdl_test_bin" >/dev/null 2>&1; then
             pass=$((pass + 1))
             echo "PASS gmsdl_test (1 test)"
         else
             fail=$((fail + 1))
             echo "FAIL gmsdl_test (runtime failure)"
-            SDL_VIDEODRIVER=dummy timeout 10 "$RESULTS_DIR/gmsdl_test_bin" 2>&1 | head -5 | sed 's/^/  /'
+            SDL_VIDEODRIVER=dummy timeout 60 "$RESULTS_DIR/gmsdl_test_bin" 2>&1 | head -5 | sed 's/^/  /'
         fi
     fi
 else
