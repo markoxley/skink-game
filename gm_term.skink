@@ -15,6 +15,7 @@ extern fn tcsetattr(fd: int, act: int, termios: string) -> int
 extern fn read(fd: int, buf: string, n: int) -> int
 extern fn write(fd: int, buf: string, n: int) -> int
 extern fn isatty(fd: int) -> int
+extern fn poll(fds: string, nfds: int64, timeout: int) -> int
 
 // Raw byte accessors for malloc'd buffers (ESC string, termios blob) —
 // string indexing is bounds-checked against strlen (0 on a fresh buffer).
@@ -83,10 +84,33 @@ pub fn ExitRaw() {
     }
 }
 
+// stdinReady reports whether a byte is readable from stdin without
+// blocking, via poll(2) with a zero timeout (struct pollfd { int fd;
+// short events; short revents; }, POLLIN=1). PollKey must stay
+// nonblocking even when stdin is a TTY still in canonical mode — an
+// IDE test runner's PTY — where a bare read(0) blocks until newline.
+fn stdinReady() -> bool {
+    fd := libc.malloc(8)
+    wl32(fd, 0, 0)
+    Skink_mem_write_byte(fd, 4, 1)
+    Skink_mem_write_byte(fd, 5, 0)
+    Skink_mem_write_byte(fd, 6, 0)
+    Skink_mem_write_byte(fd, 7, 0)
+    r := poll(fd, 1, 0)
+    libc.free(fd)
+    return r > 0
+}
+
 // PollKey returns a key code or KEY_NONE. Arrow keys are decoded from
 // ESC [ A/B/C/D escape sequences; everything else returns the byte.
+// Never blocks: every read is gated by a zero-timeout poll, which
+// also lets a lone ESC decode as Esc instead of hanging for '['.
 pub fn PollKey() -> int {
     b := libc.malloc(4)
+    if !stdinReady() {
+        libc.free(b)
+        return KEY_NONE
+    }
     n := read(0, b, 1)
     if n <= 0 {
         libc.free(b)
@@ -98,8 +122,16 @@ pub fn PollKey() -> int {
         return c
     }
     // possible escape sequence: read [ then letter
+    if !stdinReady() {
+        libc.free(b)
+        return KEY_ESC
+    }
     n = read(0, b, 1)
     if n <= 0 || (int(b[0]) & 255) != 91 {
+        libc.free(b)
+        return KEY_ESC
+    }
+    if !stdinReady() {
         libc.free(b)
         return KEY_ESC
     }
